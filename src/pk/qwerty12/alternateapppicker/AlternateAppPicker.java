@@ -2,16 +2,18 @@ package pk.qwerty12.alternateapppicker;
 
 import java.lang.reflect.Method;
 
-import pk.qwerty12.alternateapppicker.R;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.content.res.XModuleResources;
 import android.content.res.XResources;
+import android.os.Build;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.AbsListView;
 import android.widget.AdapterView;
+import android.widget.AdapterView.OnItemClickListener;
 import android.widget.CheckBox;
 import android.widget.GridView;
 import de.robv.android.xposed.IXposedHookZygoteInit;
@@ -19,8 +21,6 @@ import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
-import de.robv.android.xposed.XC_MethodHook.MethodHookParam;
-import android.widget.AdapterView.OnItemClickListener;
 
 
 /* This file contains portions of code licensed under the Apache License, Version 2.0, Copyright (C) 2008 The Android Open Source Project */
@@ -72,19 +72,19 @@ public class AlternateAppPicker implements IXposedHookZygoteInit {
 							final CheckBox mAlwaysCheckBox = (CheckBox) buttonLayout.getChildAt(0);
 
 							/* Since my hook below causes a crash, just reimplement the listener here, which will work with the checkbox rather than relying upon the buttons, instead of trying to play nice with the original method. */
-							final GridView mGrid = (GridView) XposedHelpers.getObjectField(param.thisObject, "mGrid");
-							mGrid.setOnItemClickListener(new OnItemClickListener() {
-							      public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-							          if (XposedHelpers.getBooleanField(param.thisObject, "mAlwaysUseOption")) {
-							              final int checkedPos = mGrid.getCheckedItemPosition();
-							              final boolean enabled = checkedPos != GridView.INVALID_POSITION;
-							              if (enabled) {
-							            	  XposedHelpers.callMethod(param.thisObject, "startSelected", position, mAlwaysCheckBox.isChecked());
-							              }
-							          } else {
-							        	  XposedHelpers.callMethod(param.thisObject, "startSelected", position, false);
-							          }
-							      }
+							final AbsListView mAbsListView = getAbsListView(param.thisObject);
+							mAbsListView.setOnItemClickListener(new OnItemClickListener() {
+								  public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+									  if (XposedHelpers.getBooleanField(param.thisObject, "mAlwaysUseOption")) {
+										  final int checkedPos = mAbsListView.getCheckedItemPosition();
+										  final boolean enabled = checkedPos != GridView.INVALID_POSITION;
+										  if (enabled) {
+											  XposedHelpers.callMethod(param.thisObject, "startSelected", position, mAlwaysCheckBox.isChecked());
+										  }
+									  } else {
+										  XposedHelpers.callMethod(param.thisObject, "startSelected", position, false);
+									  }
+								  }
 							});
 
 							//Next, set the layout direction that I had to remove from the layout itself since it was only publicly accessible from the next SDK version 
@@ -100,7 +100,7 @@ public class AlternateAppPicker implements IXposedHookZygoteInit {
 						@Override
 						protected void afterHookedMethod(MethodHookParam param) throws Throwable {
 						}
-				    });*/
+					});*/
 			
 		} catch (Throwable t) { XposedBridge.log(t); } 
 	}
@@ -110,7 +110,13 @@ public class AlternateAppPicker implements IXposedHookZygoteInit {
 		//Do the resource replacing part
 		try {
 			final XModuleResources modRes = XModuleResources.createInstance(startupParam.modulePath, null);
-			XResources.setSystemWideReplacement("android", "layout", "resolver_grid", modRes.fwd(R.layout.resolver_grid_alt));
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+				XResources.setSystemWideReplacement("android", "layout", "resolver_list",
+						modRes.fwd(R.layout.resolver_list_alt));
+			} else {
+				XResources.setSystemWideReplacement("android", "layout", "resolver_grid",
+						modRes.fwd(R.layout.resolver_grid_alt));
+			}
 		} catch (Throwable t) {
 			XposedBridge.log(t);
 			return;
@@ -120,4 +126,11 @@ public class AlternateAppPicker implements IXposedHookZygoteInit {
 		hacksToResolverActivity(classResolverActivity, determineTouchWiz(classResolverActivity));
 	}
 
+	private AbsListView getAbsListView(Object thisObject) {
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+			return (AbsListView) XposedHelpers.getObjectField(thisObject, "mListView");
+		} else {
+			return (AbsListView) XposedHelpers.getObjectField(thisObject, "mGrid");
+		}
+	}
 }
